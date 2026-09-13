@@ -1,6 +1,9 @@
 {
   "panelTitle": "🛒 Sklep & Centrum Pomocy",
   "panelDescription": "Wybierz z poniższej listy temat zgłoszenia, aby wypełnić formularz i otworzyć prywatny kanał.",
+  "ticketTitle": "Ticket: {category}",
+  "ticketDescription": "**Autor:** <@noname>\n\n**Odpowiedzi z formularza:**\n{answers}",
+  "transcriptChannelId": "",
   "categories": [
     {
       "id": "vip",
