@@ -67,6 +67,18 @@ client.on('messageReactionAdd', async (reaction, user) => {
         } catch (err) {
             console.error("Błąd nadawania roli:", err);
         }
+        // --- DODATEK DLA RENDER (otwiera port, żeby darmowy Web Service nie zasnął) ---
+const http = require('http');
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot Discorda działa poprawnie!\n');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Serwer HTTP nasłuchuje na porcie ${PORT}`);
+});
+// -----------------------------------------------------------------------------
     }
 });
 
