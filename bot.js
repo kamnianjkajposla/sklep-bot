@@ -4,13 +4,24 @@ const session = require('express-session');
 const fs = require('fs');
 
 // Wczytanie konfiguracji
-let config = { panelTitle: "🛒 Sklep & Centrum Pomocy", panelDescription: "Wybierz temat zgłoszenia poniżej:", categories: [] };
+let config = { 
+  panelTitle: "🛒 Sklep & Centrum Pomocy", 
+  panelDescription: "Wybierz temat zgłoszenia poniżej:", 
+  ticketTitle: "Ticket: {category}",
+  ticketDescription: "Odpowiedzi z formularza:",
+  transcriptChannelId: "",
+  categories: [] 
+};
+
 function loadConfig() {
   if (fs.existsSync('config.json')) {
     const data = fs.readFileSync('config.json', 'utf8');
     const parsed = JSON.parse(data);
     config.panelTitle = parsed.panelTitle || config.panelTitle;
     config.panelDescription = parsed.panelDescription || config.panelDescription;
+    config.ticketTitle = parsed.ticketTitle || config.ticketTitle;
+    config.ticketDescription = parsed.ticketDescription || config.ticketDescription;
+    config.transcriptChannelId = parsed.transcriptChannelId || "";
     config.categories = parsed.categories || [];
   }
 }
@@ -162,17 +173,34 @@ app.get('/', requireAuth, (req, res) => {
               </div>
             </div>
 
-            <!-- Edycja wyglądu panelu na Discordzie -->
+            <!-- Edycja wyglądu głównego panelu !ticket -->
             <div class="section">
-                <h2>💬 Edycja wyglądu wiadomości panelu na Discordzie</h2>
+                <h2>💬 Edycja głównej wiadomości panelu na Discordzie (!ticket)</h2>
                 <form action="/update-panel" method="POST">
-                    <label><b>Tytuł panelu:</b></label>
+                    <label><b>Tytuł głównego panelu:</b></label>
                     <input type="text" name="panelTitle" required value="${config.panelTitle}">
                     
-                    <label><b>Opis panelu:</b></label>
+                    <label><b>Opis głównego panelu:</b></label>
                     <textarea name="panelDescription" rows="3" required>${config.panelDescription}</textarea>
                     
-                    <button type="submit" class="btn" style="background: #10b981; color: white;">Zapisz wygląd panelu</button>
+                    <button type="submit" class="btn" style="background: #10b981; color: white;">Zapisz główny panel</button>
+                </form>
+            </div>
+
+            <!-- Edycja wiadomości wysyłanej w nowym tickecie -->
+            <div class="section">
+                <h2>🎫 Edycja wiadomości wewnątrz utworzonego ticketa</h2>
+                <form action="/update-ticket-message" method="POST">
+                    <label><b>Tytuł wiadomości w tickecie (możesz użyć {category}):</b></label>
+                    <input type="text" name="ticketTitle" required value="${config.ticketTitle}">
+                    
+                    <label><b>Opis/Treść w tickecie (możesz użyć {answers}, {user}):</b></label>
+                    <textarea name="ticketDescription" rows="4" required>${config.ticketDescription}</textarea>
+
+                    <label><b>ID kanału na transkrypty (zostaw puste, jeśli nie chcesz wysyłać):</b></label>
+                    <input type="text" name="transcriptChannelId" value="${config.transcriptChannelId}" placeholder="np. 123456789012345678">
+                    
+                    <button type="submit" class="btn" style="background: #10b981; color: white;">Zapisz ustawienia ticketu</button>
                 </form>
             </div>
 
@@ -218,10 +246,19 @@ app.get('/', requireAuth, (req, res) => {
   `);
 });
 
-// Zapisanie wyglądu panelu
+// Zapisanie głównego panelu
 app.post('/update-panel', requireAuth, (req, res) => {
   config.panelTitle = req.body.panelTitle || config.panelTitle;
   config.panelDescription = req.body.panelDescription || config.panelDescription;
+  saveConfig();
+  res.redirect('/');
+});
+
+// Zapisanie wiadomości wewnątrz ticketa oraz kanału transkryptów
+app.post('/update-ticket-message', requireAuth, (req, res) => {
+  config.ticketTitle = req.body.ticketTitle || config.ticketTitle;
+  config.ticketDescription = req.body.ticketDescription || config.ticketDescription;
+  config.transcriptChannelId = req.body.transcriptChannelId || "";
   saveConfig();
   res.redirect('/');
 });
@@ -393,7 +430,6 @@ client.on('messageCreate', async message => {
       return message.reply('Brak kategorii w konfiguracji! Wejdź na panel WWW i dodaj kategorię.');
     }
 
-    // Pobiera aktualny tytuł i opis ustawiony na stronie WWW
     const embed = new EmbedBuilder()
       .setTitle(config.panelTitle)
       .setDescription(config.panelDescription)
@@ -470,17 +506,22 @@ client.on('interactionCreate', async interaction => {
         answersSummary += `**${q.label}:**\n> ${val}\n\n`;
       });
 
-      // Zapisujemy ID użytkownika w opisie embeda, aby bot wiedział, kogo oznaczyć przy przejmowaniu
+      // Dynamiczne parsowanie szablonu z konfiguracji strony WWW
+      let formattedTitle = config.ticketTitle.replace('{category}', categoryData.label);
+      let formattedDescription = config.ticketDescription
+        .replace('{user}', `<@${user.id}>`)
+        .replace('{answers}', answersSummary);
+
       const ticketEmbed = new EmbedBuilder()
-        .setTitle(`Ticket: ${categoryData.label}`)
-        .setDescription(`**Autor:** <@${user.id}>\n\n**Odpowiedzi z formularza:**\n${answersSummary}`)
+        .setTitle(formattedTitle)
+        .setDescription(`**Autor:** <@${user.id}>\n\n${formattedDescription}`)
         .setColor('#4ade80')
         .setTimestamp();
 
       const adminRow = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
-            .setCustomId(`admin_claim_${user.id}`) // Przekazujemy ID użytkownika w przycisku
+            .setCustomId(`admin_claim_${user.id}`)
             .setLabel('🙋‍♂️ Przejmij Ticket')
             .setStyle(ButtonStyle.Success),
           new ButtonBuilder()
@@ -500,7 +541,6 @@ client.on('interactionCreate', async interaction => {
 
   // Obsługa przycisków w kanale ticketa
   if (interaction.isButton()) {
-    // Przejęcie ticketa z oznaczeniem osoby, która go utworzyła
     if (interaction.customId.startsWith('admin_claim_')) {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
         return interaction.reply({ content: 'Tylko administrator może przejąć ticket!', ephemeral: true });
@@ -514,11 +554,37 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.customId === 'close_ticket') {
       await interaction.reply({ content: 'Zamykanie ticketa za 3 sekundy...' });
+
+      // Wysyłanie transkryptu na dedykowany kanał (jeśli podano ID w konfiguracji)
       setTimeout(async () => {
         try {
+          if (config.transcriptChannelId && config.transcriptChannelId.trim() !== "") {
+            const transcriptChannel = interaction.guild.channels.cache.get(config.transcriptChannelId);
+            if (transcriptChannel) {
+              const messages = await interaction.channel.messages.fetch({ limit: 100 });
+              let transcriptText = `🔒 Zamknięto kanał zgłoszenia: **${interaction.channel.name}**\n\n**Ostatnie wiadomości:**\n`;
+              
+              messages.reverse().forEach(m => {
+                transcriptText += `[${new Date(m.createdTimestamp).toLocaleString()}]: ${m.author.tag}: ${m.content}\n`;
+              });
+
+              if (transcriptText.length > 1900) transcriptText = transcriptText.substring(0, 1900) + "... (obcięto)";
+
+              await transcriptChannel.send({
+                embeds: [
+                  new EmbedBuilder()
+                    .setTitle(`📑 Transkrypt Zgłoszenia: ${interaction.channel.name}`)
+                    .setDescription(transcriptText)
+                    .setColor('#ef4444')
+                    .setTimestamp()
+                ]
+              });
+            }
+          }
+
           await interaction.channel.delete();
         } catch (e) {
-          console.error(e);
+          console.error("Błąd podczas usuwania ticketa lub wysyłania transkryptu:", e);
         }
       }, 3000);
     }
