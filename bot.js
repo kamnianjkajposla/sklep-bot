@@ -26,7 +26,6 @@ app.use(session({
   saveUninitialized: true
 }));
 
-// Middleware zabezpieczający hasłem (hasło: kicimici)
 const requireAuth = (req, res, next) => {
   if (req.session && req.session.loggedIn) {
     return next();
@@ -71,7 +70,7 @@ app.get('/logout', (req, res) => {
   res.redirect('/login');
 });
 
-// Panel Główny (Zabezpieczony)
+// Panel Główny z zarządzaniem i edycją
 app.get('/', requireAuth, (req, res) => {
   let categoriesHtml = config.categories.map((cat, index) => {
     let questionsHtml = (cat.questions || []).map(q => `
@@ -85,10 +84,13 @@ app.get('/', requireAuth, (req, res) => {
         <h3>${cat.label} <span style="font-size:12px; color:#94a3b8;">(ID: ${cat.id})</span></h3>
         <p><b>Pytania w formularzu:</b></p>
         ${questionsHtml}
-        <form action="/delete-category" method="POST" style="margin-top: 10px;">
-          <input type="hidden" name="index" value="${index}">
-          <button type="submit" style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Usuń kategorię</button>
-        </form>
+        <div style="display: flex; gap: 10px; margin-top: 15px;">
+          <a href="/edit-category?index=${index}" style="background: #eab308; color: #0f172a; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 14px;">Edytuj kategorię</a>
+          <form action="/delete-category" method="POST" style="margin:0;">
+            <input type="hidden" name="index" value="${index}">
+            <button type="submit" style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Usuń</button>
+          </form>
+        </div>
       </div>
     `;
   }).join('');
@@ -110,26 +112,27 @@ app.get('/', requireAuth, (req, res) => {
         .question-box { background: #0f172a; padding: 12px; border-radius: 6px; margin-bottom: 10px; border: 1px dashed #475569; }
     </style>
     <script>
-      function addQuestionField() {
+      function addQuestionField(labelVal = '', typeVal = 'text', optionsVal = '') {
         const container = document.getElementById('questions-container');
         const index = container.children.length;
         const div = document.createElement('div');
         div.className = 'question-box';
         div.innerHTML = \`
           <label>Treść pytania:</label>
-          <input type="text" name="q_label_\${index}" required placeholder="np. Podaj szczegóły">
+          <input type="text" name="q_label_\${index}" required value="\${labelVal}" placeholder="np. Podaj szczegóły">
           <label>Typ pola:</label>
           <select name="q_type_\${index}" onchange="toggleOptions(this, \${index})">
-            <option value="text">Tekst otwarty</option>
-            <option value="select">Lista rozwijana (Select)</option>
+            <option value="text" \${typeVal === 'text' ? 'selected' : ''}>Tekst otwarty</option>
+            <option value="select" \${typeVal === 'select' ? 'selected' : ''}>Lista rozwijana (Select)</option>
           </select>
-          <div id="options_div_\${index}" style="display:none;">
+          <div id="options_div_\${index}" style="display:\${typeVal === 'select' ? 'block' : 'none'};">
             <label>Opcje listy rozwijanej (oddzielone przecinkami):</label>
-            <input type="text" name="q_options_\${index}" placeholder="Opcja 1, Opcja 2">
+            <input type="text" name="q_options_\${index}" value="\${optionsVal}" placeholder="Opcja 1, Opcja 2">
           </div>
           <input type="hidden" name="total_questions" id="total_q" value="\${index + 1}">
         \`;
         container.appendChild(div);
+        document.getElementById('total_q').value = container.children.length;
       }
       function toggleOptions(select, index) {
         const optDiv = document.getElementById('options_div_' + index);
@@ -140,7 +143,7 @@ app.get('/', requireAuth, (req, res) => {
     <body>
         <div class="container">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <h1>🛠️ Zaawansowany Panel Sterowania</h1>
+              <h1>🛠️ Panel Sterowania Botem</h1>
               <a href="/logout" style="color: #ef4444; text-decoration: none; font-weight: bold;">Wyloguj się</a>
             </div>
 
@@ -196,6 +199,119 @@ app.get('/', requireAuth, (req, res) => {
     </body>
     </html>
   `);
+});
+
+// Strona edycji wybranej kategorii
+app.get('/edit-category', requireAuth, (req, res) => {
+  const index = parseInt(req.query.index);
+  const cat = config.categories[index];
+
+  if (!cat) return res.redirect('/');
+
+  let existingQuestionsJs = '';
+  if (cat.questions && cat.questions.length > 0) {
+    existingQuestionsJs = cat.questions.map(q => 
+      `addQuestionField(${JSON.stringify(q.label)}, ${JSON.stringify(q.type)}, ${JSON.stringify(q.options || '')});`
+    ).join('\n');
+  } else {
+    existingQuestionsJs = `addQuestionField('', 'text', '');`;
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="pl">
+    <head><meta charset="UTF-8"><title>Edycja Kategorii</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #f8fafc; padding: 30px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 900px; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        h1 { color: #eab308; text-align: center; }
+        input, select, textarea { width: 100%; padding: 10px; margin: 6px 0 12px 0; background: #0f172a; border: 1px solid #475569; color: white; border-radius: 6px; box-sizing: border-box; }
+        button.btn { background: #eab308; color: #0f172a; border: none; padding: 12px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; }
+        button.btn:hover { background: #ca8a04; }
+        .question-box { background: #0f172a; padding: 12px; border-radius: 6px; margin-bottom: 10px; border: 1px dashed #475569; }
+    </style>
+    <script>
+      function addQuestionField(labelVal = '', typeVal = 'text', optionsVal = '') {
+        const container = document.getElementById('questions-container');
+        const index = container.children.length;
+        const div = document.createElement('div');
+        div.className = 'question-box';
+        div.innerHTML = \`
+          <label>Treść pytania:</label>
+          <input type="text" name="q_label_\${index}" required value="\${labelVal}" placeholder="np. Podaj szczegóły">
+          <label>Typ pola:</label>
+          <select name="q_type_\${index}" onchange="toggleOptions(this, \${index})">
+            <option value="text" \${typeVal === 'text' ? 'selected' : ''}>Tekst otwarty</option>
+            <option value="select" \${typeVal === 'select' ? 'selected' : ''}>Lista rozwijana (Select)</option>
+          </select>
+          <div id="options_div_\${index}" style="display:\${typeVal === 'select' ? 'block' : 'none'};">
+            <label>Opcje listy rozwijanej (oddzielone przecinkami):</label>
+            <input type="text" name="q_options_\${index}" value="\${optionsVal}" placeholder="Opcja 1, Opcja 2">
+          </div>
+          <input type="hidden" name="total_questions" id="total_q" value="\${index + 1}">
+        \`;
+        container.appendChild(div);
+        document.getElementById('total_q').value = container.children.length;
+      }
+      function toggleOptions(select, index) {
+        const optDiv = document.getElementById('options_div_' + index);
+        optDiv.style.display = select.value === 'select' ? 'block' : 'none';
+      }
+      window.onload = function() {
+        document.getElementById('questions-container.innerHTML = ""');
+        ${existingQuestionsJs}
+      }
+    </script>
+    </head>
+    <body>
+        <div class="container">
+            <h1>✏️ Edytuj kategorię: ${cat.label}</h1>
+            <form action="/update-category" method="POST">
+                <input type="hidden" name="index" value="${index}">
+                
+                <label><b>ID Kategorii:</b></label>
+                <input type="text" name="id" required value="${cat.id}">
+                
+                <label><b>Nazwa kategorii wyświetlana na Discordzie:</b></label>
+                <input type="text" name="label" required value="${cat.label}">
+
+                <h3>Pytania do formularza zgłoszenia:</h3>
+                <div id="questions-container"></div>
+                <input type="hidden" name="total_questions" id="total_q" value="1">
+                <button type="button" onclick="addQuestionField()" style="background:#475569; color:white; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; margin-bottom:15px;">+ Dodaj kolejne pytanie</button>
+                
+                <button type="submit" class="btn">Zapisz zmiany</button>
+            </form>
+            <p style="text-align:center; margin-top: 20px;"><a href="/" style="color: #38bdf8; text-decoration:none;">← Powrót do panelu głównego</a></p>
+        </div>
+    </body>
+    </html>
+  `);
+});
+
+// Zapisanie edytowanej kategorii
+app.post('/update-category', requireAuth, (req, res) => {
+  const { index, id, label, total_questions } = req.body;
+  const catIndex = parseInt(index);
+  const count = parseInt(total_questions) || 1;
+  const questions = [];
+
+  for (let i = 0; i < count; i++) {
+    const qLabel = req.body[`q_label_${i}`];
+    const qType = req.body[`q_type_${i}`];
+    const qOptions = req.body[`q_options_${i}`] || '';
+
+    if (qLabel) {
+      questions.push({ label: qLabel, type: qType, options: qOptions });
+    }
+  }
+
+  if (config.categories[catIndex]) {
+    config.categories[catIndex] = { id, label, questions };
+    saveConfig();
+  }
+
+  res.redirect('/');
 });
 
 app.post('/add-category', requireAuth, (req, res) => {
