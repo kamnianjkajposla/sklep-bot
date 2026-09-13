@@ -1,4 +1,6 @@
 {
+  "panelTitle": "🛒 Sklep & Centrum Pomocy",
+  "panelDescription": "Wybierz z poniższej listy temat zgłoszenia, aby wypełnić formularz i otworzyć prywatny kanał.",
   "categories": [
     {
       "id": "vip",
@@ -6,7 +8,8 @@
       "questions": [
         {
           "label": "Twój nick z gry",
-          "type": "text"
+          "type": "text",
+          "options": ""
         }
       ]
     }
