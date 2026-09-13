@@ -1,0 +1,14 @@
+{
+  "categories": [
+    {
+      "id": "vip",
+      "label": "🛒 Zakup Rangi VIP",
+      "questions": [
+        {
+          "label": "Twój nick z gry",
+          "type": "text"
+        }
+      ]
+    }
+  ]
+}
