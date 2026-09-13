@@ -1,11 +1,13 @@
 {
   "name": "sklep-bot",
   "version": "1.0.0",
+  "description": "Sklep Bot z panelem WWW i ticketami",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.0"
+    "discord.js": "^14.14.1",
+    "express": "^4.19.2"
   }
 }
