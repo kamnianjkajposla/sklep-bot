@@ -1,16 +1,1 @@
-{
-  "categories": [
-    {
-      "id": "vip",
-      "label": "🛒 Zakup Rangi VIP",
-      "emoji": "💎",
-      "question": "Podaj swój dokładny nick z gry oraz metodę płatności:"
-    },
-    {
-      "id": "support",
-      "label": "🛠️ Pomoc Techniczna",
-      "emoji": "⚙️",
-      "question": "Opisz dokładnie swój problem lub błąd, z którym się mierzysz:"
-    }
-  ]
-}
+
