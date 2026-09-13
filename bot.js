@@ -4,11 +4,14 @@ const session = require('express-session');
 const fs = require('fs');
 
 // Wczytanie konfiguracji
-let config = { categories: [] };
+let config = { panelTitle: "🛒 Sklep & Centrum Pomocy", panelDescription: "Wybierz temat zgłoszenia poniżej:", categories: [] };
 function loadConfig() {
   if (fs.existsSync('config.json')) {
     const data = fs.readFileSync('config.json', 'utf8');
-    config = JSON.parse(data);
+    const parsed = JSON.parse(data);
+    config.panelTitle = parsed.panelTitle || config.panelTitle;
+    config.panelDescription = parsed.panelDescription || config.panelDescription;
+    config.categories = parsed.categories || [];
   }
 }
 function saveConfig() {
@@ -70,7 +73,7 @@ app.get('/logout', (req, res) => {
   res.redirect('/login');
 });
 
-// Panel Główny z zarządzaniem i edycją
+// Panel Główny
 app.get('/', requireAuth, (req, res) => {
   let categoriesHtml = config.categories.map((cat, index) => {
     let questionsHtml = (cat.questions || []).map(q => `
@@ -159,6 +162,20 @@ app.get('/', requireAuth, (req, res) => {
               </div>
             </div>
 
+            <!-- Edycja wyglądu panelu na Discordzie -->
+            <div class="section">
+                <h2>💬 Edycja wyglądu wiadomości panelu na Discordzie</h2>
+                <form action="/update-panel" method="POST">
+                    <label><b>Tytuł panelu:</b></label>
+                    <input type="text" name="panelTitle" required value="${config.panelTitle}">
+                    
+                    <label><b>Opis panelu:</b></label>
+                    <textarea name="panelDescription" rows="3" required>${config.panelDescription}</textarea>
+                    
+                    <button type="submit" class="btn" style="background: #10b981; color: white;">Zapisz wygląd panelu</button>
+                </form>
+            </div>
+
             <div class="section">
                 <h2>➕ Dodaj nową kategorię i formularz</h2>
                 <form action="/add-category" method="POST">
@@ -201,7 +218,15 @@ app.get('/', requireAuth, (req, res) => {
   `);
 });
 
-// Strona edycji wybranej kategorii
+// Zapisanie wyglądu panelu
+app.post('/update-panel', requireAuth, (req, res) => {
+  config.panelTitle = req.body.panelTitle || config.panelTitle;
+  config.panelDescription = req.body.panelDescription || config.panelDescription;
+  saveConfig();
+  res.redirect('/');
+});
+
+// Strona edycji kategorii
 app.get('/edit-category', requireAuth, (req, res) => {
   const index = parseInt(req.query.index);
   const cat = config.categories[index];
@@ -213,8 +238,6 @@ app.get('/edit-category', requireAuth, (req, res) => {
     existingQuestionsJs = cat.questions.map(q => 
       `addQuestionField(${JSON.stringify(q.label)}, ${JSON.stringify(q.type)}, ${JSON.stringify(q.options || '')});`
     ).join('\n');
-  } else {
-    existingQuestionsJs = `addQuestionField('', 'text', '');`;
   }
 
   res.send(`
@@ -258,7 +281,6 @@ app.get('/edit-category', requireAuth, (req, res) => {
         optDiv.style.display = select.value === 'select' ? 'block' : 'none';
       }
       window.onload = function() {
-        document.getElementById('questions-container.innerHTML = ""');
         ${existingQuestionsJs}
       }
     </script>
@@ -289,7 +311,6 @@ app.get('/edit-category', requireAuth, (req, res) => {
   `);
 });
 
-// Zapisanie edytowanej kategorii
 app.post('/update-category', requireAuth, (req, res) => {
   const { index, id, label, total_questions } = req.body;
   const catIndex = parseInt(index);
@@ -372,9 +393,10 @@ client.on('messageCreate', async message => {
       return message.reply('Brak kategorii w konfiguracji! Wejdź na panel WWW i dodaj kategorię.');
     }
 
+    // Pobiera aktualny tytuł i opis ustawiony na stronie WWW
     const embed = new EmbedBuilder()
-      .setTitle('🛒 Sklep & Centrum Pomocy')
-      .setDescription('Wybierz z poniższej listy temat zgłoszenia, aby wypełnić formularz i otworzyć prywatny kanał.')
+      .setTitle(config.panelTitle)
+      .setDescription(config.panelDescription)
       .setColor('#38bdf8')
       .setFooter({ text: 'System Ticketów - Sklep Bot' });
 
@@ -448,6 +470,7 @@ client.on('interactionCreate', async interaction => {
         answersSummary += `**${q.label}:**\n> ${val}\n\n`;
       });
 
+      // Zapisujemy ID użytkownika w opisie embeda, aby bot wiedział, kogo oznaczyć przy przejmowaniu
       const ticketEmbed = new EmbedBuilder()
         .setTitle(`Ticket: ${categoryData.label}`)
         .setDescription(`**Autor:** <@${user.id}>\n\n**Odpowiedzi z formularza:**\n${answersSummary}`)
@@ -457,7 +480,7 @@ client.on('interactionCreate', async interaction => {
       const adminRow = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
-            .setCustomId('admin_claim_ticket')
+            .setCustomId(`admin_claim_${user.id}`) // Przekazujemy ID użytkownika w przycisku
             .setLabel('🙋‍♂️ Przejmij Ticket')
             .setStyle(ButtonStyle.Success),
           new ButtonBuilder()
@@ -475,12 +498,18 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // Obsługa przycisków w kanale ticketa
   if (interaction.isButton()) {
-    if (interaction.customId === 'admin_claim_ticket') {
+    // Przejęcie ticketa z oznaczeniem osoby, która go utworzyła
+    if (interaction.customId.startsWith('admin_claim_')) {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
         return interaction.reply({ content: 'Tylko administrator może przejąć ticket!', ephemeral: true });
       }
-      await interaction.reply({ content: `🙋‍♂️ Ticket został przejęty przez administratora **${interaction.user.username}**!` });
+
+      const creatorId = interaction.customId.replace('admin_claim_', '');
+      await interaction.reply({ 
+        content: `🙋‍♂️ Ticket został przejęty przez administratora **${interaction.user.username}**! <@${creatorId}>, administrator zajmuje się teraz Twoją sprawą.` 
+      });
     }
 
     if (interaction.customId === 'close_ticket') {
